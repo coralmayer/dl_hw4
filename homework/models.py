@@ -24,6 +24,21 @@ class MLPPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
+        input_dim = n_track * 2 * 2
+        hidden_dim = 128
+        output_dim = n_waypoints * 2
+
+        self.net = nn.Sequential(
+          nn.Linear(input_dim, hidden_dim),
+          nn.LayerNorm(hidden_dim),
+          nn.ReLU(), 
+          nn.Linear(hidden_dim, hidden_dim),
+          nn.ReLU(), 
+          nn.Linear(hidden_dim, 64),
+          nn.ReLU(),
+          nn.Linear(64, output_dim),
+        )
+
     def forward(
         self,
         track_left: torch.Tensor,
@@ -43,7 +58,22 @@ class MLPPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        b = track_left.shape[0]
+        
+        x = torch.cat([track_left, track_right], dim=1)
+
+        x = x / 20.0
+
+        x = x.reshape(b, -1)
+        out = self.net(x)
+
+        out = torch.tanh(out) * 6.0
+
+        out = out.reshape(b, self.n_waypoints, 2)
+
+        out[:, :, 1] = torch.relu(out[:, :, 1])
+
+        return out
 
 
 class TransformerPlanner(nn.Module):
@@ -58,7 +88,22 @@ class TransformerPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
+        self.d_model = d_model
+        self.input_proj = nn.Linear(2, d_model)
+
         self.query_embed = nn.Embedding(n_waypoints, d_model)
+
+        decoder_layer = nn.TransformerDecoderLayer(
+          d_model=d_model,
+          nhead=4, 
+          dim_feedforward=128,
+          dropout=0.1, 
+          batch_first=True,
+        )
+
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=2)
+
+        
 
     def forward(
         self,
