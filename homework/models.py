@@ -2,6 +2,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from torch.nn.functional import pad
 
 HOMEWORK_DIR = Path(__file__).resolve().parent
 INPUT_MEAN = [0.2788, 0.2657, 0.2629]
@@ -103,7 +104,7 @@ class TransformerPlanner(nn.Module):
 
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=2)
 
-        
+        self.output_proj = nn.Linear(d_model, 2)
 
     def forward(
         self,
@@ -124,7 +125,25 @@ class TransformerPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        b = track_left.shape[0]
+
+        x = torch.cat([track_left, track_right, dim=1])
+
+        x = x / 20.0
+
+        tokens = self.input_proj(x)
+
+        queries = self.query_embed.weight.unsqueeze(0).expand(b, -1, -1)
+
+        decoded = self.decoder(queries, tokens)
+
+        out = self.output_proj(decoded)
+
+        out = torch.tanh(out) * 6.0
+
+        out[:, :, 1] = torch.relu(out[:, :, 1])
+
+        return out
 
 
 class CNNPlanner(torch.nn.Module):
@@ -139,6 +158,27 @@ class CNNPlanner(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
 
+        self.backbone = nn.Sequential(
+          nn.Conv2d(3, 32, kernel_size=5, stride=2, padding=2), 
+          nn.BatchNorm2d(32), 
+          nn.ReLU(),
+          nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), 
+          nn.BatchNorm2d(64),
+          nn.ReLU(),
+          nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1), 
+          nn.BatchNorm2d(128),
+          nn.ReLU(), 
+          nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+          nn.BatchNorm2d(256), 
+          nn.ReLU()
+        )
+
+        self.head = nn.Sequential(
+          nn.Linear(256, 128),
+          nn.ReLU(),
+          nn.Linear(128, n_waypoints * 2),
+        )
+
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
         Args:
@@ -150,7 +190,17 @@ class CNNPlanner(torch.nn.Module):
         x = image
         x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
-        raise NotImplementedError
+        feats = self.backbone(x)
+        pooled = feats.mean(dim=[2, 3])
+
+        out = self.head(pooled)
+        out = out.reshape(-1, self.n_waypoints, 2)
+
+        out = torch.tanh(out) * 6.0
+
+        out[:, :, 1] = torch.relu(out[:, :, 1])
+
+        return out
 
 
 MODEL_FACTORY = {
