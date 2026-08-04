@@ -47,7 +47,7 @@ def train(model_name, batch_size, lr, epochs, device):
 
       if model_name in ["mlp_planner", "transformer_planner"]:
         pred = model(
-          track_left = batch["track_left"]
+          track_left = batch["track_left"],
           track_right = batch["track_right"],
         )
       else:
