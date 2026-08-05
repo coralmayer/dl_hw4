@@ -127,7 +127,7 @@ class TransformerPlanner(nn.Module):
         """
         b = track_left.shape[0]
 
-        x = torch.cat([track_left, track_right, dim=1])
+        x = torch.cat([track_left, track_right], dim=1)
 
         x = x / 20.0
 
