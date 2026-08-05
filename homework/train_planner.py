@@ -10,8 +10,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from models import load_model, save_model
-from datasets.road_dataset import load_data
+from homework.models import load_model, save_model
+from homework.datasets.road_dataset import load_data
 
 def masked_mse(pred, target, mask):
   """
