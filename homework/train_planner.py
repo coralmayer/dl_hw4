@@ -22,7 +22,11 @@ def masked_mse(pred, target, mask):
   """
   mask = mask.unsqueeze(-1).float()
   diff = (pred - target) * mask
-  return (diff ** 2).mean()
+
+  lateral_diff = diff[..., 0]
+  lon_diff = diff[..., 1]
+  loss = (2.0 * lateral_diff**2 + 1.0 * lon_diff**2).mean()
+  return loss
 
 def train_planner():
   device = "cuda" if torch.cuda.is_available() else "cpu"
