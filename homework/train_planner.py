@@ -27,21 +27,22 @@ def masked_mse(pred, target, mask):
 def train_planner():
   device = "cuda" if torch.cuda.is_available() else "cpu"
 
-  model_names = ["mlp_planner", "transformer_planner", "cnn_planner"]
-
-  for model_name in model_names:
-    print(f"\n== Training {model_name} ===")
+  for model_name in ["mlp_planner", "transformer_planner", "cnn_planner"]:
+    if model_name in ["mlp_planner", "transformer_planner"]:
+      transform_pipeline = "state_only"
+    else:
+      transform_pipeline = "default"
 
     train_loader = load_data(
       "drive_data/train", 
-      transform_pipeline = "default", 
+      transform_pipeline = transform_pipeline, 
       shuffle = True, 
       batch_size = 64,
     )
 
     val_loader = load_data(
       "drive_data/val", 
-      transform_pipeline = "default", 
+      transform_pipeline = transform_pipeline, 
       shuffle = False, 
       batch_size = 64,
     )
@@ -88,7 +89,7 @@ def train_planner():
       print(f"Epoch {epoch+1} Val:", metric.compute())
 
     save_model(model)
-    print(f"Saved model to {path}")
+    print(f"Saved {model_name}\n")
 
 if __name__ == "__main__":
     train_planner()
