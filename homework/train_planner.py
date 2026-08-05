@@ -23,7 +23,7 @@ def masked_mse(pred, target, mask):
   diff = (pred - target) * mask
   return (diff ** 2).mean()
 
-def train(model_name, batch_size, lr, epochs, device):
+def train_planner(model_name, batch_size, lr, epochs, device):
   train_loader = load_data(
     "drive_data/train", 
     transform_pipeline = "default", 
@@ -67,7 +67,8 @@ def train(model_name, batch_size, lr, epochs, device):
   path = save_model(model)
   print(f"Saved model to {path}")
 
-
+if __name__ == "__main__":
+    train_planner()
 
 
 
