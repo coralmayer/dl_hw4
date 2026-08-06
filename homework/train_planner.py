@@ -25,8 +25,23 @@ def masked_mse(pred, target, mask):
 
   lateral_diff = diff[..., 0]
   lon_diff = diff[..., 1]
-  loss = (2.0 * lateral_diff**2 + 1.0 * lon_diff**2).mean()
-  return loss
+  return (2.0 * lateral_diff**2 + 1.0 * lon_diff**2).mean()
+
+def get_loaders(transform_pipeline):
+  train_loader = load_data(
+      "drive_data/train", 
+      transform_pipeline = transform_pipeline, 
+      shuffle = True, 
+      batch_size = 64,
+    )
+  val_loader = load_data(
+    "drive_data/val", 
+    transform_pipeline = transform_pipeline, 
+    shuffle = False,       
+    batch_size = 64,
+  )
+  return train_loader, val_loader
+
 
 def train_planner():
   device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -37,39 +52,30 @@ def train_planner():
     else:
       transform_pipeline = "default"
 
-    train_loader = load_data(
-      "drive_data/train", 
-      transform_pipeline = transform_pipeline, 
-      shuffle = True, 
-      batch_size = 64,
-    )
-
-    val_loader = load_data(
-      "drive_data/val", 
-      transform_pipeline = transform_pipeline, 
-      shuffle = False, 
-      batch_size = 64,
-    )
-
+    if model_name == "mlp_planner":
+      num_epochs = 20
+    elif model_name == "transformer_planner":
+      num_epochs = 60
+    else:
+      num_epochs = 60
+    
     model = load_model(model_name).to(device)
     optimizer = Adam(model.parameters(), lr = 1e-3)
 
-    metric = PlannerMetric()
+    best_lat = float("inf")
 
-    def forward_batch(batch):
-      if model_name in ["mlp_planner", "transformer_planner"]:
-        return model(track_left=batch["track_left"], track_right=batch["track_right"])
-      else:
-        return model(image=batch["image"])
+    for epoch in range(num_epochs):
+      train_loader, val_loader = get_loaders(transform_pipeline)
 
-    for epoch in range(20):
       model.train()
-      metric.reset()
+      metric = PlannerMetric()
 
       for batch in train_loader:
         batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
-
-        pred = forward_batch(batch)
+        if model_name in ["mlp_planner", "transformer_planner"]:
+          pred = model(track_left=batch["track_left"], track_right=batch["track_right"])
+        else:
+          pred = model(image=batch["image"])
 
         loss = masked_mse(pred, batch["waypoints"], batch["waypoints_mask"])
 
@@ -82,21 +88,29 @@ def train_planner():
       print(f"Epoch {epoch+1} Train:", metric.compute())
 
       model.eval()
-      metric.reset()
+      metric = PlannerMetric()
 
       with torch.inference_mode():
         for batch in val_loader:
           batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
-          pred = forward_batch(batch)
+          
+          if model_name in ["mlp_planner", "transformer_planner"]:
+            pred = model(track_left=batch["track_left"], track_right=batch["track_right"])
+          else:
+            pred = model(image=batch["image"])
+
           metric.add(pred, batch["waypoints"], batch["waypoints_mask"])
 
-      print(f"Epoch {epoch+1} Val:", metric.compute())
+      val_metrics = metric.compute()
+      print(f"Epoch {epoch+1} Val:", val_metrics)
 
-    save_model(model)
+      if val_metrics["lateral_error"] < best_lat:
+        best_lat = val_metrics["lateral_error"]
+        save_model(model)
+        print(f"Saved BEST {model_name} (lat={best_lat:.3f})")
+
     print(f"Saved {model_name}\n")
 
 if __name__ == "__main__":
     train_planner()
-
-
 
