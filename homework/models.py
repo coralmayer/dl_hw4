@@ -58,7 +58,7 @@ class MLPPlanner(nn.Module):
         
         x = torch.cat([track_left, track_right], dim=1)
 
-        x = x.reshape(b, -1)
+        x = x.reshape(x.size(0), -1)
         out = self.net(x)
         return out.view(-1, self.n_waypoints, 2)
 
