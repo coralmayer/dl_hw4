@@ -62,52 +62,33 @@ def train_planner():
       else:
         return model(image=batch["image"])
 
-      if model_name == "mlp_planner":
-        num_epochs = 30
-      elif model_name == "transformer_planner":
-        num_epochs = 60
-      else:
-        num_epochs = 60
+    for epoch in range(20):
+      model.train()
+      metric.reset()
 
-      model = load_model(model_name).to(device)
-      optimizer = Adam(model.parameters(), lr = 1e-3)
+      for batch in train_loader:
+        batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
 
-      best_lat = float("inf")
+        pred = forward_batch(batch)
 
-      for epoch in range(num_epochs):
-        train_loader, val_loader = get_loaders(transform_pipeline)
-        model.train()
-        metric = PlannerMetric()
+        loss = masked_mse(pred, batch["waypoints"], batch["waypoints_mask"])
 
-        for batch in train_loader:
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        metric.add(pred, batch["waypoints"], batch["waypoints_mask"])
+
+      print(f"Epoch {epoch+1} Train:", metric.compute())
+
+      model.eval()
+      metric.reset()
+
+      with torch.inference_mode():
+        for batch in val_loader:
           batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
-
-          if model_name in ["mlp_planner", "transformer_planner"]:
-            pred = model(track_left=batch["track_left"], track_right=batch["track_right"])
-          else: 
-            pred = model(images=batch["images"])
-
-          loss = masked_mse(pred, batch["waypoints"], batch["waypoints_mask"])
-
-          optimizer.zero_grad()
-          loss.backward()
-          optimizer.step()
-
+          pred = forward_batch(batch)
           metric.add(pred, batch["waypoints"], batch["waypoints_mask"])
-
-        print(f"Epoch {epoch+1} Train:", metric.compute())
-
-        model.eval()
-        metric.reset()
-
-        with torch.inference_mode():
-          for batch in val_loader:
-            batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
-            if model_name in ["mlp_planner", "transformer_planner"]:
-              pred = model(track_left=batch["track_left"], track_right=batch["track_right"])
-            else:
-              pred = model(images=batch["images"])
-            metric.add(pred, batch["waypoints"], batch["waypoints_mask"])
 
       print(f"Epoch {epoch+1} Val:", metric.compute())
 
