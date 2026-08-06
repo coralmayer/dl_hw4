@@ -149,31 +149,28 @@ class CNNPlanner(torch.nn.Module):
     ):
         super().__init__()
 
-        self.n_waypoints = n_waypoints
-
-        self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
-        self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
-
-        self.backbone = nn.Sequential(
-          nn.Conv2d(3, 32, kernel_size=5, stride=2, padding=2), 
-          nn.BatchNorm2d(32), 
+        self.encoder = nn.Sequential(
+          nn.Conv2d(3, 32, kernel_size=5, stride=2, padding=2),
           nn.ReLU(),
           nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), 
-          nn.BatchNorm2d(64),
           nn.ReLU(),
-          nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1), 
-          nn.BatchNorm2d(128),
-          nn.ReLU(), 
-          nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-          nn.BatchNorm2d(256), 
-          nn.ReLU()
+          nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+          nn.ReLU(),
+          nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
+          nn.ReLU(),
         )
 
+        self.flatten_dim = 128 * 6 * 8
+
         self.head = nn.Sequential(
-          nn.Linear(256, 128),
+          nn.Linear(self.flatten_dim, 256),
+          nn.ReLU(),
+          nn.Linear(256, 128), 
           nn.ReLU(),
           nn.Linear(128, n_waypoints * 2),
         )
+
+        self.n_waypoints = n_waypoints
 
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -183,20 +180,10 @@ class CNNPlanner(torch.nn.Module):
         Returns:
             torch.FloatTensor: future waypoints with shape (b, n, 2)
         """
-        x = image
-        x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
-
-        feats = self.backbone(x)
-        pooled = feats.mean(dim=[2, 3])
-
-        out = self.head(pooled)
-        out = out.reshape(-1, self.n_waypoints, 2)
-
-        out = torch.tanh(out) * 6.0
-
-        out[:, :, 1] = torch.relu(out[:, :, 1])
-
-        return out
+        x = self.encoder(image)
+        x = x.view(x.size(0), -1)
+        out = self.head(x)
+        return out.view(-1, self.n_waypoints, 2)
 
 
 MODEL_FACTORY = {
