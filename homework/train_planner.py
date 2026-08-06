@@ -62,14 +62,29 @@ def train_planner():
       else:
         return model(image=batch["image"])
 
-    for epoch in range(20):
-      model.train()
-      metric.reset()
+      if model_name == "mlp_planner":
+        num_epochs = 30
+     elif model_name == "transformer_planner":
+        num_epochs = 60
+      else:
+        num_epochs = 60
 
-      for batch in train_loader:
-        batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
+      model = load_model(model_name).to(device)
+      optimizer = Adam(model.parameters(), lr = 1e-3)
 
-        pred = forward_batch(batch)
+      best_lat = float("inf")
+
+      for epoch in range(num_epochs):
+        train_loader, val_loader = get_loaders(transform_pipeline)
+        model.train()
+        metric = PlannerMetric()
+
+        for batch in train_loader:
+          batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
+
+          if model_name in ["mlp_planner", "transformer_planner"]:
+            pred = model(track_left=batch["track_left"], track_right=batch["track_right"])
+            
 
         loss = masked_mse(pred, batch["waypoints"], batch["waypoints_mask"])
 
