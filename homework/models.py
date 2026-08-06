@@ -122,7 +122,7 @@ class TransformerPlanner(nn.Module):
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
 
-        x = torch.cat([track_left, track_right], dim=1)
+        x = torch.cat([track_left, track_right], dim=-1)
 
         x = self.input_proj(x)
 
